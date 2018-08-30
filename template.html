@@ -9,7 +9,7 @@ URL: https://code.google.com/p/io-2012-slides
 <!DOCTYPE html>
 <html>
 <head>
-  <title>Google IO 2012</title>
+  <title>V8 Heap Memory</title>
   <meta charset="utf-8">
   <meta http-equiv="X-UA-Compatible" content="chrome=1">
   <!--<meta name="viewport" content="width=device-width, initial-scale=1.0, minimum-scale=1.0">-->
@@ -28,12 +28,12 @@ URL: https://code.google.com/p/io-2012-slides
 
   <slide class="logoslide nobackground">
     <article class="flexbox vcenter">
-      <span><img src="images/google_developers_logo.png"></span>
+        <span><img src="images/2000px-LG_Electronics_logo_2015.png"></span>
     </article>
   </slide>
 
   <slide class="title-slide segue nobackground">
-    <aside class="gdbar"><img src="images/google_developers_icon_128.png"></aside>
+    <aside class="gdbar"><img src="images/lg_icon.jpeg"></aside>
     <!-- The content of this hgroup is replaced programmatically through the slide_config.json. -->
     <hgroup class="auto-fadein">
       <h1 data-config-title><!-- populated from slide_config.json --></h1>
@@ -41,357 +41,601 @@ URL: https://code.google.com/p/io-2012-slides
       <p data-config-presenter><!-- populated from slide_config.json --></p>
     </hgroup>
   </slide>
-
   <slide>
     <hgroup>
-      <h2>Slide with Bullets</h2>
+      <h2>Generational garbage collector</h2>
     </hgroup>
     <article>
-      <ul>
-        <li>Titles are formatted as Open Sans with bold applied and font size is set at 45</li>
-        <li>Title capitalization is title case
+      <p>V8 heap split into two generations</p>
+      <ul class="build fade">
+        <li>new-space: a small young generation for newly allocated objects</li>
+        <li>old-space: a large old generation for long living objects</li>
+        <li>Scavenge: Minor garbage collection cycle</li>
+        <li>Objects are allocated in new-space, which is fairly small (between 1 and 8 MB, depending on behavior heuristics)</li>
+        <li>When the allocation pointer reaches the end of new space, a scavenge is triggered</li>
+        <li>which quickly removes the dead objects from new space</li>
+        <li>Objects which have survived two minor garbage collections are promoted to old-space. </li>
+        <li>Mark sweep, Mark compact: Major garbage collection cycle</li>
+        <li>Old-space is garbage collected during a mark-sweep or mark-compact</li>
+        <li>A major garbage collection cycle is triggered when we have promoted a certain amount of memory to old space</li>
+      </ul>
+    </article>
+  </slide>
+  <slide>
+    <hgroup>
+      <h2>Scavenge: Young generation garbage collection</h2>
+    </hgroup>
+    <article class=smaller>
+      <h3>V8 used a Cheney semispace copying garbage collector</h3>
+      <p>new-space is divided into two equal semi-spaces: to-space and from-space</p>
+      <ul class="fade">
+        <li>Most allocations are made in to-space</li>
+        <li>When to-space fills up, swap to-space and from-space (so all the objects are in from-space.</li>
+        <li>copy the live objects out of from-space, moving them to-space</li>
+        <li>or promoting them to old-space</li>
+        <img src="images/young-generation_gc.png">
+      </ul>
+    </article>
+   </slide>
+   <slide>
+     <hgroup>
+       <h2>Pseudo-code version of the scavenge algorithm</h2>
+    </hgroup>
+    <article>
+      <ul class="fade">
+        <li>
+          <pre class="prettyprint" data-lang="scavenge">
+            def scavenge():
+              swap(fromSpace, toSpace)
+              allocationPtr = toSpace.bottom
+              scanPtr = toSpace.bottom
+
+              for i = 0..len(roots):
+                root = roots[i]
+                if inFromSpace(root):
+                  rootCopy = copyObject(&allocationPtr, root)
+                  setForwardingAddress(root, rootCopy)
+                  roots[i] = rootCopy
+
+              while scanPtr < allocationPtr:
+                obj = object at scanPtr
+                scanPtr += size(obj)
+                n = sizeInWords(obj)
+                for i = 0..n:
+                  if isPointer(obj[i]) and not inOldSpace(obj[i]):
+                    fromNeighbor = obj[i]
+                    if hasForwardingAddress(fromNeighbor):
+                      toNeighbor = getForwardingAddress(fromNeighbor)
+                    else:
+                      toNeighbor = copyObject(&allocationPtr, fromNeighbor)
+                      setForwardingAddress(fromNeighbor, toNeighbor)
+                    obj[i] = toNeighbor
+
+            def copyObject(*allocationPtr, object):
+              copy = *allocationPtr
+              *allocationPtr += size(object)
+              memcpy(copy, object, size(object))
+              return copy
+          </pre>
+        </li>
+     </ul>
+    </article>
+  </slide>
+  <slide>
+    <hgroup>
+      <h2>Mark-sweep and Mark-compact</h2>
+    </hgroup>
+    <article class=smaller>
+      <p>Operated in two phase to collect old-space, which may contain several hundred megabytes of data (512MB)</p>
+      <ul class="fade">
+        <li>a marking phase and a sweeping phase or a compacting phase</li>
+        <li>During the marking phase, all live objects on the heap are discovered and marked
+        <li>There are three marking states
           <ul>
-            <li>Subtitle capitalization is title case</li>
+            <li>If an object is white, it has not yet been discovered by the garbage collector</li>
+            <li>If an object is grey, it has been discovered by the garbage collector, but not all of its neighbors have been processed yet.</li>
+            <li>If an object is black, it has been discovered, and all of its neighbors have been fully processed.</li>
           </ul>
         </li>
-        <li>Subtitle capitalization is title case</li>
-        <li>Titles and subtitles should never have a period at the end</li>
       </ul>
     </article>
   </slide>
-
   <slide>
     <hgroup>
-      <h2>Slide with Bullets that Build</h2>
-      <h3>Subtitle Placeholder</h3>
+      <h2>Marking phase</h2>
     </hgroup>
-    <article>
-      <p>A list where items build:</p>
-      <ul class="build">
-        <li>Pressing 'h' highlights code snippets</li>
-        <li>Pressing 'p' toggles speaker notes (if they're on the current slide)</li>
-        <li>Pressing 'f' toggles fullscreen viewing</li>
-        <li>Pressing 'w' toggles widescreen</li>
-        <li>Pressing 'o' toggles overview mode</li>
-        <li>Pressing 'ESC' toggles off these goodies</li>
-      </ul>
-      <p>Another list, but items fade as they build:</p>
-      <ul class="build fade">
-        <li>Hover over me!</li>
-        <li>Hover over me!</li>
-        <li>Hover over me!</li>
+    <article class=smaller>
+      <p>A depth-first-search, which makes sense if you think of the heap as a directed graph of objects connected by pointers.</p>
+      <ul class="fade">
+        <li>At the beginning of the marking cycle, the marking bitmap is clear, and all objects are white. </li>
+        <li>Objects reachable from the roots are colored grey and pushed onto the marking deque, a separately allocated buffer used to store objects being processed.</li>
+        <li>At each step, the GC pops an object from the deque, marks it black, marks neighboring white objects as grey, and pushes them onto the deque.</li>
+        <li>The algorithm terminates when the deque is empty and all discovered objects have been marked black.</li>
+        <li>Very large objects, such as long arrays, may be processed in pieces to reduce the chance of the deque overflowing.</li>
+        <li>If the deque does overflow, objects are still colored grey but are not pushed onto the deque (so their neighbors are not discovered).</li>
+        <li>When the deque is empty, the GC must scan the heap for grey objects, push them back onto the deque, and resume marking.</li>
       </ul>
     </article>
   </slide>
-
   <slide>
     <hgroup>
-      <h2>Slide with (Smaller Font)</h2>
+      <h2>Pseudo-code version of the marking algorithm</h2>
+    </hgroup>
+    <article class=smaller>
+      <pre class="prettyprint" data-lang="marking algorithm">
+markingDeque = []
+overflow = false
+
+def markHeap():
+  for root in roots:
+    mark(root)
+
+  do:
+    if overflow:
+      overflow = false
+      refillMarkingDeque()
+
+    while !markingDeque.isEmpty():
+      obj = markingDeque.pop()
+      setMarkBits(obj, BLACK)
+      for neighbor in neighbors(obj):
+        mark(neighbor)
+  while overflow
+    
+
+def mark(obj):
+  if markBits(obj) == WHITE:
+    setMarkBits(obj, GREY)
+    if markingDeque.isFull():
+      overflow = true
+    else:
+      markingDeque.push(obj)
+
+def refillMarkingDeque():
+  for each obj on heap:
+    if markBits(obj) == GREY:
+      markingDeque.push(obj)
+      if markingDeque.isFull():
+        overflow 
+      </pre>
+    </article>
+  </slide>
+  <slide>
+    <hgroup>
+      <h2>Sweeping phase</h2>
+    </hgroup>
+    <article class=smaller>
+      <p>When the marking algorithm terminates, all live objects are marked black, and all dead objects are left white. This information is used by either the sweeping phase or the compacting phase, depending on which algorithm is being used.</p>
+      <ul class="fade">
+		<li>
+Once marking is complete, we can reclaim memory by either sweeping or compacting. Both algorithms work at a page level (remember, V8 pages are 1 MB contiguous chunks, not the same as virtual memory pages).
+
+The sweeping algorithm scans for contiguous ranges of dead objects, converts them to free spaces, and adds them to free lists. Each page maintains separate free lists for small regions (< 256 words), medium regions (< 2048 words), large regions (< 16384 words), and huge regions (anything larger). The sweeping algorithm is extremely simple: it just iterates across the page's marking bitmap, looking for ranges of unmarked objects. Free lists are mostly used by the scavenge algorithm for promoting surviving objects to old-space, but they are also used by the compacting algorithm to relocate objects. Some kinds of objects can only be allocated in old-space, so free lists are used for those, too.</li>
+     </ul>
+    </article>
+  </slide>
+  <slide>
+    <hgroup>
+      <h2>Compacting phase</h2>
+    </hgroup>
+    <article class=smaller>
+	  <p>The compacting algorithm attempts to reduce actual memory usage by migrating objects from fragmented pages (containing a lot of small free spaces) to free spaces on other pages.</p>
+      <ul class="fade">
+		<li>New pages may be allocated, if necessary. Once a page is evacuated, it can be released back to the operating system. The migration process is actually pretty complicated, so I'll gloss over some of the details here. Basically, for each live object on an evacuation candidate page, space is allocated from a free list on another page. The object is copied into the freshly allocated space, and a forwarding address is left in the first word of the original object. During the evacuation, the locations of pointers between evacuated objects are recorded. Once the evacuation is complete, V8 iterates over the list of recorded pointer locations and updates them to point to the new copies. Locations of pointers between different pages are recorded during the marking process, so pointers from other pages are also updated at this time. Note that if a page becomes too "popular", i.e., there are too many pointers to be recorded to its objects from other pages, pointer location recording is disabled for that page, and the page cannot be evacuated until the next garbage collection cycle.</li>
+     </ul>
+    </article>
+  </slide>
+  <slide>
+    <hgroup>
+      <h2>Incremental marking and lazy sweeping</h2>
+    </hgroup>
+    <article class=smaller>
+      <p>mark-sweep and mark-compact can be pretty time-consuming if they are applied to a large heap with a lot of live data</p>
+      <ul>
+        <li>Incremental marking allows the heap to be marked in a series of small pauses, on other order of 5-10 ms each (on mobile). Incremental marking begins when the heap reaches a certain threshold size. After being activated, every time a certain amount of memory is allocated, execution is paused to perform an incremental marking step. Incremental marking, like regular marking, is basically a depth-first-search, and it uses the same white-grey-black system for classifying objects.</li>
+        <li>Once incremental marking is complete, lazy sweeping begins. All objects have been marked live or dead, and the heap knows exactly how much memory could be freed by sweeping. All this memory doesn't necessarily have to be freed up right away though, and delaying the sweeping won't really hurt anything. So rather than sweeping all pages at the same time, the garbage collector sweeps pages on an as-needed basis until all pages have been swept. At that point, the garbage collection cycle is complete, and incremental marking is free to start again.</li>
+      </ul>
+    </article>
+  </slide>
+  <slide>
+    <hgroup>
+    <h2>V8 Heap organization</h2>
+    </hgroup>
+    <article class=smaller>
+      <ul>
+        <li>New-space: Most objects are allocated here. New-space is small and is designed to be garbage collected very quickly, independent of other spaces</li>
+        <li>Old-space: Contains most objects which may have pointers to other objects. Most objects are moved here after surviving in new-space for a while</li>
+        <li>Large-object-space: This space contains objects which are larger than the size limits of other spaces. Each object gets its own mmap'd region of memory. Large objects are never moved by the garbage collector.</li>
+        <li>Code-space: Code objects, which contain JITed instructions, are allocated here. This is the only space with executable memory (although Codes may be allocated in large-object-space, and those are executable, too).</li>
+        <li>Map-space:  Each of these spaces contains objects which are all the same size and has some constraints on what kind of objects they point to, which simplifies collection.</li>
+      </ul>
+    </article>
+  </slide>
+  <slide>
+    <hgroup>
+      <h2>Heuristics to trigger GC</h2>
     </hgroup>
     <article class="smaller">
       <ul>
-        <li>All <a href="http://google.com">links</a> open in new tabs.</li>
-        <li>To change that this, add <code>target="_self"</code> to the link.</li>
+<!--          <pre class="prettyprint" data-lang="heap.h">
+enum GCCallbackFlags {
+  kNoGCCallbackFlags = 0,
+  kGCCallbackFlagConstructRetainedObjectInfos = 1 << 1,
+  kGCCallbackFlagForced = 1 << 2,
+  kGCCallbackFlagSynchronousPhantomCallbackProcessing = 1 << 3,
+  kGCCallbackFlagCollectAllAvailableGarbage = 1 << 4,
+  kGCCallbackFlagCollectAllExternalMemory = 1 << 5,
+  kGCCallbackScheduleIdleGarbageCollection = 1 << 6,
+};
+
+enum class GarbageCollectionReason {
+  kUnknown = 0,
+  kAllocationFailure = 1,
+  // Heap::AllocateRawCodeInLargeObjectSpace->CollectGarbage
+  // Heap::AllocateRawWithRetry->Trying 2GCs-> CollectAllAvailableGarbage(GarbageCollectionReason::kLastResort);
+  kAllocationLimit = 2,
+  kContextDisposal = 3,
+  kCountersExtension = 4,
+  kDebugger = 5,
+  kDeserializer = 6,
+  // Heap::Reservespace from snapshot deserializer, CollectGarbage(NEW_SPACE)
+  kExternalMemoryPressure = 7,
+  kFinalizeMarkingViaStackGuard = 8,
+  kFinalizeMarkingViaTask = 9,
+  kFullHashtable = 10,
+  kHeapProfiler = 11,
+  kIdleTask = 12,  
+  // ScavengeJob::IdleTask::RunInternal->Heap::CollectGarbage(NEW_SPACE, kIdleTask);
+  kLastResort = 13,
+  // After allocation failure and 2 GCs, CollectAllAvailableGarbage(GarbageCollectionReason::kLastResort);
+  kLowMemoryNotification = 14,
+  kMakeHeapIterable = 15,
+  kMemoryPressure = 16,
+  kMemoryReducer = 17,
+  kRuntime = 18,
+  kSamplingProfiler = 19,
+  kSnapshotCreator = 20,
+  kTesting = 21
+};
+          </pre>-->
+        <li>AllocationFailure: Two GCs, and CollectAllAvailableGarbage if failed. </li>
+        <pre class="prettyprint" data-lang="heap.cc">
+HeapObject* Heap::AllocateRawWithRetry(int size, AllocationSpace space,
+                                       AllocationAlignment alignment) {
+  AllocationResult alloc = AllocateRaw(size, space, alignment);
+  HeapObject* result;
+  if (alloc.To(&result)) {
+    return result;
+  }
+  // Two GCs before panicking. In newspace will almost always succeed.
+  for (int i = 0; i < 2; i++) {
+    CollectGarbage(alloc.RetrySpace(),
+                   GarbageCollectionReason::kAllocationFailure);
+    alloc = AllocateRaw(size, space, alignment);
+    if (alloc.To(&result)) {
+      return result;
+    }
+  }
+  isolate()->counters()->gc_last_resort_from_handles()->Increment();
+  CollectAllAvailableGarbage(GarbageCollectionReason::kLastResort);
+  {
+    AlwaysAllocateScope scope(isolate());
+    alloc = AllocateRaw(size, space, alignment);
+  }
+        </pre>
       </ul>
     </article>
   </slide>
-
-  <slide hidden>
-    Hidden slides are left out of the presentation.
-  </slide>
-
   <slide>
-    <hgroup>
-      <h2>Code Slide (with Subtitle Placeholder)</h2>
-      <h3>Subtitle Placeholder</h3>
-    </hgroup>
-    <article>
-      <p>Press 'h' to highlight important sections of code (wrapped in <code>&lt;b&gt;</code>).</p>
-      <pre class="prettyprint" data-lang="javascript">
-&lt;script type='text/javascript'&gt;
-  // Say hello world until the user starts questioning
-  // the meaningfulness of their existence.
-  function helloWorld(world) {
-    <b>for (var i = 42; --i &gt;= 0;) {
-      alert('Hello ' + String(world));
-    }</b>
-  }
-&lt;/script&gt;
-</pre>
+    <article class=smaller>
+      <ul>
+		<li>LowMemoryNotification: CollectAllAvailableGarbage</li>
+        <li>IsolateInBackgroundNotification</li>
+        <pre class="prettyprint" data-lang="heap.cc">
+void Isolate::IsolateInBackgroundNotification() {
+  is_isolate_in_background_ = true;
+  heap()->ActivateMemoryReducerIfNeeded();
+}
+        </pre>
+        <li>MemoryReducer: detect transition of the mutator from high allocation phase to low allocation phase and to collect potential garbage created in the high allocation phase</li>
+      </ul>
     </article>
   </slide>
-
+  <slide>
+    <article class=smaller>
+      <ul>
+        <li>ContextDisposedNotification</li>
+		<li>IdleNotification</li>
+        <pre class="prettyprint" data-lang="heap.cc">
+bool Heap::IdleNotification(double deadline_in_seconds) {
+  ..........
+  GCIdleTimeHeapState heap_state = ComputeHeapState();
+  GCIdleTimeAction action =
+      gc_idle_time_handler_->Compute(idle_time_in_ms, heap_state);
+  bool result = PerformIdleTimeAction(action, heap_state, deadline_in_ms);
+  IdleNotificationEpilogue(action, heap_state, start_ms, deadline_in_ms);
+  return result;
+}
+		</pre>
+      <pre class="prettyprint" data-lang="gc-idle-time-handler.cc">
+GCIdleTimeHeapState Heap::ComputeHeapState() {
+  GCIdleTimeHeapState heap_state;
+  heap_state.contexts_disposed = contexts_disposed_;
+  heap_state.contexts_disposal_rate =
+      tracer()->ContextDisposalRateInMilliseconds();
+  heap_state.size_of_objects = static_cast<size_t>(SizeOfObjects());
+  heap_state.incremental_marking_stopped = incremental_marking()->IsStopped();
+  return heap_state;
+}
+        </pre>
+      </ul>
+    </article>
+  </slide>
   <slide>
     <hgroup>
-      <h2>Code Slide (Smaller Font)</h2>
+      <h2>CollectGarbage</h2>
     </hgroup>
-    <article class="smaller">
-      <pre class="prettyprint" data-lang="javascript">
-// Say hello world until the user starts questioning
-// the meaningfulness of their existence.
-function helloWorld(world) {
-  for (var i = 42; --i &gt;= 0;) {
-    alert('Hello ' + String(world));
+    <article class=smaller>
+      <pre class="prettyprint" data-lang="heap.cc">
+bool Heap::CollectGarbage(AllocationSpace space,
+                          GarbageCollectionReason gc_reason,
+                          const v8::GCCallbackFlags gc_callback_flags) {
+  GarbageCollector collector = SelectGarbageCollector(space, &collector_reason);
+  ....
+  bool next_gc_likely_to_collect_more = false;
+  size_t committed_memory_before = 0;
+  if (collector == MARK_COMPACTOR) {
+    committed_memory_before = CommittedOldGenerationMemory();
+  }
+  {
+      {
+        next_gc_likely_to_collect_more =
+          PerformGarbageCollection(collector, gc_callback_flags);
+      }
+    }
+      </pre>
+    </article>
+  </slide>
+  <slide>
+    <article class=smaller>
+      <pre class="prettyprint" data-lang="heap.cc - continue">
+    if (collector == MARK_COMPACTOR) {
+      size_t committed_memory_after = CommittedOldGenerationMemory();
+      size_t used_memory_after = OldGenerationSizeOfObjects();
+      MemoryReducer::Event event;
+      event.type = MemoryReducer::kMarkCompact;
+      event.time_ms = MonotonicallyIncreasingTimeInMs();
+      // Trigger one more GC if
+      // - this GC decreased committed memory,
+      // - there is high fragmentation,
+      // - there are live detached contexts.
+      event.next_gc_likely_to_collect_more =
+          (committed_memory_before > committed_memory_after + MB) ||
+          HasHighFragmentation(used_memory_after, committed_memory_after) ||
+          (detached_contexts()->length() > 0);
+      event.committed_memory = committed_memory_after;
+      if (deserialization_complete_) {
+        memory_reducer_->NotifyMarkCompact(event);
+      }
+      memory_pressure_level_.SetValue(MemoryPressureLevel::kNone);
+    }
+
+    tracer()->Stop(collector);
+  }
+
+  if (collector == MARK_COMPACTOR &&
+      (gc_callback_flags & (kGCCallbackFlagForced |
+                            kGCCallbackFlagCollectAllAvailableGarbage)) != 0) {
+    isolate()->CountUsage(v8::Isolate::kForcedGC);
+  }
+
+ if (IsYoungGenerationCollector(collector) &&
+      !ShouldAbortIncrementalMarking()) {
+    StartIncrementalMarkingIfAllocationLimitIsReached(
+        GCFlagsForIncrementalMarking(),
+        kGCCallbackScheduleIdleGarbageCollection);
+  }
+
+  return next_gc_likely_to_collect_more;
+}
+
+      </pre>
+    </article>
+  </slide>
+  <slide>
+    <hgroup>
+      <h2>PerformGarbageCollector</h2>
+    </hgroup>
+    <article class=smaller>
+      <pre class="prettyprint" data-lang="heap.cc">
+bool Heap::PerformGarbageCollection(...)
+  GCType gc_type = collector == MARK_COMPACTOR ? kGCTypeMarkSweepCompact : kGCTypeScavenge;
+  CallGCPrologueCallbacks(gc_type, kNoGCCallbackFlags);
+  {
+    switch (collector) {
+      case MARK_COMPACTOR:
+        MarkCompact();
+       break;
+      case MINOR_MARK_COMPACTOR:
+        MinorMarkCompact();
+        break;
+      case SCAVENGER:
+        if ((fast_promotion_mode_ &&
+             CanExpandOldGeneration(new_space()->Size()))) {
+          EvacuateYoungGeneration();
+        } else {
+          Scavenge();
+        }
+        break;
+    }
+  }
+      </pre>
+    </article>
+  </slide>
+  <slide>
+    <article class=smaller>
+      <pre class="prettyprint" data-lang="heap.cc - continue">
+  if (collector == MARK_COMPACTOR) {
+    // Register the amount of external allocated memory.
+    external_memory_at_last_mark_compact_ = external_memory_;
+    external_memory_limit_ = external_memory_ + external_memory_soft_limit();
+    SetOldGenerationAllocationLimit(old_gen_size, gc_speed, mutator_speed);
+  }
+  CallGCEpilogueCallbacks(gc_type, gc_callback_flags);
+}
+      </pre>
+    </article>
+   </slide>
+  <slide>
+    <hgroup>
+      <h2>Heap growing factor</h2>
+    </hgroup>
+    <article class=smaller>
+      <pre class="prettyprint" data-lang="heap.cc">
+void Heap::SetOldGenerationAllocationLimit(size_t old_gen_size, double gc_speed,
+                                           double mutator_speed) {
+  double factor = HeapGrowingFactor(gc_speed, mutator_speed, max_factor);
+
+ if (memory_reducer_->ShouldGrowHeapSlowly() ||
+      ShouldOptimizeForMemoryUsage()) {
+    factor = Min(factor, kConservativeHeapGrowingFactor);
+  }
+  if (FLAG_heap_growing_percent > 0) {
+    factor = 1.0 + FLAG_heap_growing_percent / 100.0;
+  }
+
+  old_generation_allocation_limit_ =
+      CalculateOldGenerationAllocationLimit(factor, old_gen_size);
+  }
+      </pre>
+    </article>
+  </slide>
+  <slide>
+    <hgroup>
+      <h2>
+        V8 external allocated memory
+      </h2>
+    </hgroup>
+    <article class=smaller>
+      <ul>
+        <li>WebMediaPlayer memory usage</li>
+        <li>PartitionAlloc: ArrayBufferAllocator</li>
+        <li>V8StringResource</li>
+        <li>XMLHttpRequest SharedBuffer: FastMallocAllocator</li>
+        <li>JSArrayBuffer</li>
+        <li>SerializedScriptValue</li>
+        <li>data for ImageResourceContent, gpu_memory_usage for CanvasElement</li>
+      </ul>
+    </article>
+  </slide>
+  <slide>
+    <article class=smaller>
+      <pre class="prettyprint" data-lang="v8.h">
+int64_t Isolate::AdjustAmountOfExternalAllocatedMemory(int64_t change_in_bytes) {
+ ...
+ if (change_in_bytes > 0 && amount > *external_memory_limit) {
+    ReportExternalAllocationLimitReached();
+  }
+  return *external_memory;
+}
+      </pre>
+      <pre class="prettyprint" data-lang="heap.cc">
+void Heap::ReportExternalMemoryPressure() {
+  if (external_memory_ > (external_memory_at_last_mark_compact_ + external_memory_hard_limit())) {
+    CollectAllGarbage(...);
+   return;
+  }
+  if (incremental_marking()->IsStopped()) {
+    if (incremental_marking()->CanBeActivated()) {
+      StartIncrementalMarking(...);
+    } else {
+      CollectAllGarbage(...);
+    }
+  } else {
+      incremental_marking()->AdvanceIncrementalMarking(...);
   }
 }
-</pre>
-<pre class="prettyprint" data-lang="css">
-&lt;style&gt;
-  p { color: pink }
-  b { color: blue }
-&lt;/style&gt;
-</pre>
-<pre class="prettyprint" data-lang="html">
-&lt;!DOCTYPE html>
-&lt;html>
-&lt;head>
-  &lt;title>My Awesome Page&lt;/title>
-&lt;/head>
-&lt;body>
-  &lt;p&gt;Hello world&lt;/p&gt;
-&lt;body>
-&lt;/html>
-</pre>
     </article>
   </slide>
-
   <slide>
-    <aside class="note">
-      <section>
+    <hgroup>
+        <h2>Blink GC</h2>
+    </hgroup>
+    <article class=smaller>
         <ul>
-          <li>Point I wanted to make #1</li>
-          <li>Point I wanted to make #2</li>
-          <li>Point I wanted to make #3</li>
-          <li>Example <a href="#">link</a> in notes.</li>
+            <li>Oilpan is a garbage collection system for Blink objects</li>
+            <li>V8GCController::GcPrologue, GcEpilogue</li>
+            <pre class="prettyprint" data-lang="v8_gc_controller.cc">
+void V8GCController::GcPrologue(...) {
+  switch (type) {
+    case v8::kGCTypeScavenge:
+      ThreadState::Current()->WillStartV8GC(BlinkGC::kV8MinorGC);
+      VisitWeakHandlesForMinorGC(isolate);
+      break;
+    case v8::kGCTypeMarkSweepCompact:
+      ThreadState::Current()->WillStartV8GC(BlinkGC::kV8MajorGC);
+      break;
+    case v8::kGCTypeIncrementalMarking:
+      ThreadState::Current()->WillStartV8GC(BlinkGC::kV8MajorGC);
+     break;
+  }
+}
+             </pre>
         </ul>
-        <p><b>Remember to say this tag line!</b></p>
-      </section>
-    </aside>
-    <hgroup>
-      <h2>Slide with Speaker Notes</h2>
-    </hgroup>
-    <article>
-      <p>Press 'p' to toggle speaker notes.</p>
     </article>
   </slide>
-
   <slide>
-    <aside class="note">
-      <section>
-        <ul>
-          <li>See this amazing link: <a href="http://www.google.com">link</a>.</li>
-        </ul>
-        <p><b>Remember to say this tag line!</b></p>
-      </section>
-    </aside>
-    <hgroup>
-      <h2>Presenter Mode</h2>
-    </hgroup>
-    <article>
-      <p>Add <code><a href="?presentme=true" target="_self">?presentme=true</a></code> to the URL to enabled presenter mode.
-      This setting is sticky, meaning refreshing the page will persist presenter
-      mode.</p>
-      <p>Hit <code><a href="?presentme=false" target="_self">?presentme=false</a></code> to disable presenter mode.</p>
+    <article class=smaller>
+      <pre class="prettyprint" data-lang="v8_gc_controller.cc">
+void V8GCController::GcEpilogue(...) {
+  switch (type) {
+    case v8::kGCTypeScavenge:
+      ThreadState::Current()->ScheduleV8FollowupGCIfNeeded(BlinkGC::kV8MinorGC);
+      break;
+    case v8::kGCTypeMarkSweepCompact:
+      ThreadState::Current()->ScheduleV8FollowupGCIfNeeded(BlinkGC::kV8MajorGC);
+      break;
+  }
+
+  ThreadState* current_thread_state = ThreadState::Current();
+    if (flags & v8::kGCCallbackFlagForced) {
+          current_thread_state->CollectGarbage(
+          BlinkGC::kHeapPointersOnStack, BlinkGC::kAtomicMarking,
+          BlinkGC::kEagerSweeping, BlinkGC::kForcedGC);
+      current_thread_state->SetGCState(ThreadState::kFullGCScheduled);
+    }
+
+    // v8::kGCCallbackFlagCollectAllAvailableGarbage is used when V8 handles
+    // low memory notifications.
+    if ((flags & v8::kGCCallbackFlagCollectAllAvailableGarbage) ||
+        (flags & v8::kGCCallbackFlagCollectAllExternalMemory)) {
+      // This single GC is not enough. See the above comment.
+      current_thread_state->CollectGarbage(
+          BlinkGC::kHeapPointersOnStack, BlinkGC::kAtomicMarking,
+          BlinkGC::kEagerSweeping, BlinkGC::kForcedGC);
+
+      current_thread_state->SchedulePreciseGC();
+    }
+    if (flags & v8::kGCCallbackScheduleIdleGarbageCollection) {
+      current_thread_state->ScheduleIdleGC();
+    }
+  }
+            </pre>
     </article>
   </slide>
-
   <slide>
     <hgroup>
-      <h2>Slide with Image</h2>
-    </hgroup>
-    <article>
-      <img src="images/chart.png" class="reflect" alt="Description" title="Description">
-      <footer class="source">source: place source info here</footer>
-    </article>
-  </slide>
-
-  <slide>
-    <hgroup>
-      <h2>Slide with Image (Centered horz/vert)</h2>
-    </hgroup>
-    <article class="flexbox vcenter">
-      <img src="images/barchart.png" alt="Description" title="Description">
-      <footer class="source">source: place source info here</footer>
-    </article>
-  </slide>
-
-  <slide>
-    <hgroup>
-      <h2>Table Option A</h2>
-      <h3>Subtitle Placeholder</h3>
-    </hgroup>
-    <article>
-      <table>
-        <tr>
-          <th></th><th>Column 1</th><th>Column 2</th><th>Column 3</th><th>Column 4</th>
-        </tr>
-        <tr>
-          <td>Row 1</td><td>placeholder</td><td class="highlight">placeholder</td><td>placeholder</td><td>placeholder</td>
-        </tr>
-        <tr>
-          <td>Row 2</td><td>placeholder</td><td>placeholder</td><td>placeholder</td><td>placeholder</td>
-        </tr>
-        <tr>
-          <td>Row 3</td><td>placeholder</td><td>placeholder</td><td>placeholder</td><td>placeholder</td>
-        </tr>
-        <tr>
-          <td>Row 4</td><td>placeholder</td><td>placeholder</td><td>placeholder</td><td>placeholder</td>
-        </tr>
-        <tr>
-          <td>Row 5</td><td>placeholder</td><td>placeholder</td><td>placeholder</td><td>placeholder</td>
-        </tr>
-      </table>
-    </article>
-  </slide>
-
-  <slide>
-    <hgroup>
-      <h2>Table Option A (Smaller Text)</h2>
-      <h3>Subtitle Placeholder</h3>
+        <h2>PartitonAlloc</h2>
     </hgroup>
     <article class="smaller">
-      <table>
-        <tr>
-          <th></th><th>Column 1</th><th>Column 2</th><th>Column 3</th><th>Column 4</th>
-        </tr>
-        <tr>
-          <td>Row 1</td><td>placeholder</td><td class="highlight">placeholder</td><td>placeholder</td><td>placeholder</td>
-        </tr>
-        <tr>
-          <td>Row 2</td><td>placeholder</td><td>placeholder</td><td>placeholder</td><td>placeholder</td>
-        </tr>
-        <tr>
-          <td>Row 3</td><td>placeholder</td><td>placeholder</td><td>placeholder</td><td>placeholder</td>
-        </tr>
-        <tr>
-          <td>Row 4</td><td>placeholder</td><td>placeholder</td><td>placeholder</td><td>placeholder</td>
-        </tr>
-        <tr>
-          <td>Row 5</td><td>placeholder</td><td>placeholder</td><td>placeholder</td><td>placeholder</td>
-        </tr>
-      </table>
-    </article>
-  </slide>
-
-  <slide>
-    <hgroup>
-      <h2>Table Option B</h2>
-      <h3>Subtitle Placeholder</h3>
-    </hgroup>
-    <article>
-      <table class="rows">
-        <tr>
-          <th>Header 1</th><td>placeholder</td><td class="highlight">placeholder</td><td>placeholder</td>
-        </tr>
-        <tr>
-          <th>Header 2</th><td>placeholder</td><td>placeholder</td><td>placeholder</td>
-        </tr>
-        <tr>
-          <th>Header 3</th><td>placeholder</td><td>placeholder</td><td>placeholder</td>
-        </tr>
-        <tr>
-          <th>Header 4</th><td>placeholder</td><td>placeholder</td><td>placeholder</td>
-        </tr>
-        <tr>
-          <th>Header 5</th><td>placeholder</td><td>placeholder</td><td>placeholder</td>
-        </tr>
-      </table>
-    </article>
-  </slide>
-
-  <slide>
-    <hgroup>
-      <h2>Slide Styles</h2>
-    </hgroup>
-    <article class="smaller">
-      <div class="columns-2">
         <ul>
-          <li class="red">class="red"</li>
-          <li class="red2">class="red2"</li>
-          <li class="red3">class="red3"</li>
-          <li class="blue">class="blue"</li>
-          <li class="blue2">class="blue2"</li>
-          <li class="blue3">class="blue3"</li>
-          <li class="green">class="green"</li>
-          <li class="green2">class="green2"</li>
+            <li>ArrayBufferAllocator</li>
+            <li>FastMallocAllocator</li>
+            <li>LayoutAllocator</li>
+            <li>BufferAllocator</li>
         </ul>
-        <ul>
-          <li class="green3">class="green3"</li>
-          <li class="yellow">class="yellow"</li>
-          <li class="yellow2">class="yellow2"</li>
-          <li class="yellow3">class="yellow3"</li>
-          <li class="gray">class="gray"</li>
-          <li class="gray2">class="gray2"</li>
-          <li class="gray3">class="gray3"</li>
-          <li class="gray4">class="gray4"</li>
-        </ul>
-      </div>
-      <div class="centered" style="margin-top:2em">
-        I am centered text with a <button>Button</button> and <button disabled>Disabled</button> button.
-      </div>
     </article>
   </slide>
-
-  <slide class="segue dark nobackground">
-    <aside class="gdbar"><img src="images/google_developers_icon_128.png"></aside>
-    <hgroup class="auto-fadein">
-      <h2>Segue Slide</h2>
-      <h3>Subtitle Placeholder</h3>
-    </hgroup>
-  </slide>
-
-  <slide class="fill nobackground" style="background-image: url(images/sky.jpg)">
-    <hgroup>
-      <h2 class="white">Full Image (with Optional Header)</h2>
-    </hgroup>
-    <footer class="source white">www.flickr.com/photos/25797459@N06/5438799763/</footer>
-  </slide>
-
-  <slide class="segue dark quote nobackground">
-    <aside class="gdbar right bottom"><img src="images/google_developers_icon_128.png"></aside>
-    <article class="flexbox vleft auto-fadein">
-      <q>
-        This is an example of quote text.
-      </q>
-      <div class="author">
-        Name<br>
-        Company
-      </div>
-    </article>
-  </slide>
-
-  <slide>
-    <hgroup>
-      <h2>Slide with Iframe</h2>
-    </hgroup>
-    <article>
-      <iframe data-src="http://www.google.com/doodle4google/history.html"></iframe>
-    </article>
-  </slide>
-
-  <slide>
-    <article>
-      <iframe data-src="http://www.google.com/doodle4google/history.html"></iframe>
-    </article>
-  </slide>
-
-  <slide class="thank-you-slide segue nobackground">
-    <aside class="gdbar right"><img src="images/google_developers_icon_128.png"></aside>
-    <article class="flexbox vleft auto-fadein">
-      <h2>&lt;Thank You!&gt;</h2>
-      <p>Important contact information goes here.</p>
-    </article>
-    <p class="auto-fadein" data-config-contact>
-      <!-- populated from slide_config.json -->
-    </p>
-  </slide>
-
-  <slide class="logoslide dark nobackground">
-    <article class="flexbox vcenter">
-      <span><img src="images/google_developers_logo_white.png"></span>
-    </article>
-  </slide>
-
   <slide class="backdrop"></slide>
 
 </slides>
